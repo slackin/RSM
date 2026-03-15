@@ -1,0 +1,12 @@
+#!/sbin/openrc-run
+
+name="Remote Storage Manager Service"
+description="RSM Fastify service"
+command="/usr/bin/node"
+command_args="/opt/rsm/apps/service/dist/index.js"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+
+depend() {
+  need net
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@rsm/service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.2.0",
+    "@rsm/shared": "0.1.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "7zip-bin": "^5.2.0",
+    "adm-zip": "^0.5.16",
+    "archiver": "^7.0.1",
+    "better-sqlite3": "^12.8.0",
+    "fastify": "^5.2.1",
+    "node-7z": "^3.0.0",
+    "node-unrar-js": "^2.0.2",
+    "tar": "^7.5.11",
+    "xxhash-wasm": "^1.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/archiver": "^6.0.3",
+    "@types/node": "^22.13.10",
+    "@types/node-7z": "^2.1.11",
+    "@types/tar": "^6.1.13",
+    "tsx": "^4.19.3"
+  }
+}

@@ -1,0 +1,396 @@
+.archiveCompare {
+  margin-top: 1rem;
+  border: 1px solid #d8dee9;
+  border-radius: 14px;
+  padding: 1rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
+  color: #182533;
+}
+
+.archiveCompareFormGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+  margin: 0.6rem 0 0.8rem;
+}
+
+.archiveCompareFieldLabel {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #3e5670;
+  margin-bottom: 0.28rem;
+}
+
+.archiveCompareInputRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+}
+
+.archiveCompareInput {
+  border: 1px solid #c7d7e8;
+  border-radius: 8px;
+  padding: 0.4rem 0.52rem;
+  font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.archiveCompareInput:disabled {
+  background: #f4f6f9;
+  color: #7a8fa5;
+}
+
+.archiveCompareButton {
+  border: 1px solid #b8c7d8;
+  border-radius: 8px;
+  background: #f4f8fc;
+  color: #2a4864;
+  font-weight: 600;
+  padding: 0.38rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.archiveCompareButton:hover:not(:disabled) {
+  background: #e8f1fb;
+}
+
+.archiveCompareButton:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.archiveCompareButtonPrimary {
+  border-color: #7fa8d0;
+  background: #e1efff;
+  color: #1a3c5e;
+}
+
+.archiveCompareButtonPrimary:hover:not(:disabled) {
+  background: #d2e7ff;
+}
+
+.archiveCompareButtonDanger {
+  border-color: #e0a0a0;
+  background: #fff4f4;
+  color: #8b1a1a;
+}
+
+.archiveCompareButtonDanger:hover:not(:disabled) {
+  background: #ffe8e8;
+}
+
+.archiveCompareButtonWarning {
+  border-color: #e0c060;
+  background: #fffbe8;
+  color: #7a5a00;
+}
+
+.archiveCompareButtonWarning:hover:not(:disabled) {
+  background: #fff6cc;
+}
+
+.archiveCompareActions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.archiveCompareMessage {
+  margin: 0.4rem 0 0.6rem;
+  border: 1px solid #c8e7d4;
+  border-radius: 10px;
+  background: #f0faf3;
+  color: #1f5f39;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.88rem;
+}
+
+.archiveCompareError {
+  margin: 0.4rem 0 0.6rem;
+  border: 1px solid #f3c6c1;
+  border-radius: 10px;
+  background: #fff5f4;
+  color: #b42318;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.88rem;
+}
+
+.archiveCompareWarning {
+  margin: 0.4rem 0 0.6rem;
+  border: 1px solid #e8d480;
+  border-radius: 10px;
+  background: #fffde8;
+  color: #7a5a00;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.88rem;
+}
+
+.archiveCompareSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.7rem 0;
+}
+
+.archiveCompareSummaryBadge {
+  border: 1px solid #dbe3ec;
+  border-radius: 20px;
+  background: #f4f8fc;
+  color: #3a5470;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+}
+
+.archiveCompareSummaryBadgeDuplicate {
+  border-color: #c0aee0;
+  background: #f5eeff;
+  color: #4a2080;
+}
+
+.archiveCompareSummaryBadgeArchiveOnly {
+  border-color: #a0c0e0;
+  background: #eef5ff;
+  color: #1a3c5e;
+}
+
+.archiveCompareSummaryBadgeDirOnly {
+  border-color: #a0c8b0;
+  background: #eef8f2;
+  color: #1a4a2a;
+}
+
+.archiveCompareSection {
+  border: 1px solid #dbe3ec;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 0.65rem;
+}
+
+.archiveCompareSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f8fbff;
+  border-bottom: 1px solid #e8eef6;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.archiveCompareSectionHeader:hover {
+  background: #f0f6ff;
+}
+
+.archiveCompareSectionTitle {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #1f3f5d;
+  margin: 0;
+}
+
+.archiveCompareSectionCount {
+  font-size: 0.8rem;
+  color: #4b6076;
+  background: #e8f0fa;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-weight: 600;
+}
+
+.archiveCompareSectionToggle {
+  font-size: 0.8rem;
+  color: #5a7a9a;
+}
+
+.archiveCompareEntryList {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem;
+  display: grid;
+  gap: 0.22rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.archiveCompareEntry {
+  font-size: 0.78rem;
+  font-family: ui-monospace, monospace;
+  color: #2a3f55;
+  padding: 0.2rem 0.42rem;
+  border-radius: 6px;
+  background: #f9fbff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.archiveCompareEntryMore {
+  font-size: 0.76rem;
+  color: #5a7898;
+  padding: 0.2rem 0.42rem;
+  font-style: italic;
+}
+
+.archiveCompareDuplicateActions {
+  border-top: 1px solid #e8eef6;
+  background: #f8fbff;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.archiveCompareConfirmRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  width: 100%;
+  border: 1px solid #f3c6c1;
+  border-radius: 8px;
+  background: #fff8f7;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.87rem;
+  color: #7a1a1a;
+}
+
+.archiveCompareConfirmRow button {
+  flex-shrink: 0;
+}
+
+/* Browser panel (shared between archive picker and dir picker) */
+.archiveCompareBrowserPanel {
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  padding: 0.7rem;
+  background: #ffffff;
+  margin: 0.35rem 0 0.7rem;
+}
+
+.archiveCompareBrowserToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.4rem;
+}
+
+.archiveCompareBreadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.45rem;
+}
+
+.archiveCompareBreadcrumbBtn {
+  border: 1px solid #d3deea;
+  border-radius: 999px;
+  background: #f8fbff;
+  color: #425c75;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.52rem;
+  cursor: pointer;
+}
+
+.archiveCompareBreadcrumbBtn:hover {
+  background: #e8f2ff;
+}
+
+.archiveCompareBreadcrumbBtnActive {
+  border-color: #8fb4db;
+  background: #e8f2ff;
+  color: #214d79;
+  font-weight: 700;
+}
+
+.archiveCompareBrowserList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.archiveCompareBrowserRow {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #f9fbff;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.45rem;
+  text-align: left;
+  align-items: center;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.84rem;
+}
+
+.archiveCompareBrowserRow:hover:not(:disabled) {
+  background: #eef5ff;
+}
+
+.archiveCompareBrowserRowSelected {
+  border-color: #8eb6de;
+  background: #e7f2ff;
+}
+
+.archiveCompareBrowserRowFile {
+  color: #3a5a3a;
+}
+
+.archiveCompareBrowserName {
+  font-weight: 600;
+  color: #1f3f5d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.archiveCompareBrowserNameFile {
+  color: #1a4a1a;
+  font-family: ui-monospace, monospace;
+  font-weight: 400;
+}
+
+.archiveCompareBrowserIcon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.archiveCompareCreateFolderRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.42rem;
+  margin-top: 0.5rem;
+}
+
+.archiveCompareCreateFolderInput {
+  border: 1px solid #c7d7e8;
+  border-radius: 8px;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.86rem;
+}
+
+.archiveCompareBrowserStatus {
+  margin: 0.35rem 0;
+  color: #4f667c;
+  font-size: 0.84rem;
+}
+
+.archiveCompareCurrentPath {
+  margin: 0.35rem 0;
+  color: #37516b;
+  font-size: 0.83rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "entries": {
+    "/tmp/rsm-cache-test/a/dup1.txt": {
+      "path": "/tmp/rsm-cache-test/a/dup1.txt",
+      "sizeBytes": 13,
+      "mtimeMs": 1773496019294.4011,
+      "ctimeMs": 1773496019294.4011,
+      "checksum": "c6cfe09159f12f7c",
+      "updatedAt": "2026-03-14T13:46:59.302Z"
+    },
+    "/tmp/rsm-cache-test/b/dup2.txt": {
+      "path": "/tmp/rsm-cache-test/b/dup2.txt",
+      "sizeBytes": 13,
+      "mtimeMs": 1773496050287.2466,
+      "ctimeMs": 1773496050287.2466,
+      "checksum": "74c388eb5effb5d0",
+      "updatedAt": "2026-03-14T13:47:30.304Z"
+    }
+  }
+}

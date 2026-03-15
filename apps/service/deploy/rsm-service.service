@@ -1,0 +1,15 @@
+[Unit]
+Description=Remote Storage Manager Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rsm
+ExecStart=/usr/bin/node /opt/rsm/apps/service/dist/index.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=RSM_PORT=8787
+
+[Install]
+WantedBy=multi-user.target
