@@ -93,10 +93,31 @@ export interface OrganizePlanItem {
 export interface OrganizePlanRequest {
   root: string;
   destination: string;
+  categories?: FileCategory[];
+  /** When set, files smaller than this byte count are placed under a "tiny-files" subfolder. */
+  tinyFileThresholdBytes?: number;
 }
 
 export interface OrganizePlanResponse {
   items: OrganizePlanItem[];
+}
+
+export interface OrganizeExecuteRequest {
+  items: OrganizePlanItem[];
+}
+
+export interface OrganizeExecuteResultItem {
+  source: string;
+  destination: string;
+  moved: boolean;
+  error?: string;
+}
+
+export interface OrganizeExecuteResponse {
+  totalItems: number;
+  movedFiles: number;
+  failedFiles: number;
+  results: OrganizeExecuteResultItem[];
 }
 
 export interface ArchiveCompareRequest {

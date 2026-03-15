@@ -22,17 +22,28 @@ function monthFolder(d: Date): string {
   return d.toLocaleString("en-US", { month: "short" });
 }
 
-export async function buildOrganizePlan(root: string, destination: string): Promise<OrganizePlanItem[]> {
+export async function buildOrganizePlan(
+  root: string,
+  destination: string,
+  categories?: FileCategory[],
+  tinyFileThresholdBytes?: number
+): Promise<OrganizePlanItem[]> {
+  const allowedCategories = categories && categories.length > 0 ? new Set(categories) : null;
   const files = await collectFiles([root]);
   const plan: OrganizePlanItem[] = [];
 
   for (const file of files) {
-    const stat = await fs.stat(file);
     const category = detectCategory(file);
+    if (allowedCategories && !allowedCategories.has(category)) continue;
+
+    const stat = await fs.stat(file);
     const date = new Date(stat.mtime);
     const year = String(date.getFullYear());
     const month = monthFolder(date);
-    const destinationPath = path.join(destination, category, year, month, path.basename(file));
+
+    const isTiny = tinyFileThresholdBytes != null && tinyFileThresholdBytes > 0 && stat.size < tinyFileThresholdBytes;
+    const base = isTiny ? path.join(destination, "tiny-files") : destination;
+    const destinationPath = path.join(base, category, year, month, path.basename(file));
 
     plan.push({
       source: file,

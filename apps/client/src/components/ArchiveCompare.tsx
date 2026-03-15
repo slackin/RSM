@@ -512,7 +512,7 @@ export function ArchiveCompare({
     if (!compareResult || isActing) return;
     setIsActing(true);
     setPendingConfirm(null);
-    setActionMessage(null);
+    setActionMessage("Removing entries from archive… This may take a while for tar/7z formats.");
     setActionError(null);
     setActionWarning(null);
     try {

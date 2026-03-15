@@ -4,8 +4,7 @@ import type {
   BulkMoveDuplicatesResponse,
   CreateDirectoryResponse,
   DeleteFileResponse,
-  DuplicateScanResponse,
-  OrganizePlanResponse
+  DuplicateScanResponse
 } from "@rsm/shared";
 import { createServiceApi, SERVICE_API_VERSION } from "./api/serviceApi";
 import { ArchiveCompare } from "./components/ArchiveCompare";
@@ -96,7 +95,6 @@ export default function App() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<DuplicateScanProgressState | null>(null);
   const [archiveCompareProgress, setArchiveCompareProgress] = useState<string | null>(null);
-  const [organizePlan, setOrganizePlan] = useState<OrganizePlanResponse | null>(null);
   const [lastArchiveJob, setLastArchiveJob] = useState<string | null>(null);
 
   const api = useMemo(() => createServiceApi(baseUrl), [baseUrl]);
@@ -246,11 +244,6 @@ export default function App() {
     return api.createDirectory({ parentPath, name });
   };
 
-  const buildPlan = async () => {
-    const plan = await api.organizePlan({ root: "/tmp", destination: "/tmp/rsm-organized" });
-    setOrganizePlan(plan);
-  };
-
   const queueArchive = async () => {
     const result = await api.createArchive({
       sourceDir: "/tmp/rsm-organized",
@@ -363,11 +356,14 @@ export default function App() {
           api.archiveDeleteEntries({ archivePath: ap, entries })
         }
       />
-      <section>
-        <h2>Organize</h2>
-        <button onClick={buildPlan}>Build Organize Plan</button>
-      </section>
-      <OrganizePreview plan={organizePlan} />
+      <OrganizePreview
+        onBuildPlan={(root, destination, categories, tinyFileThresholdBytes) =>
+          api.organizePlan({ root, destination, categories, tinyFileThresholdBytes })
+        }
+        onExecutePlan={(items) => api.organizeExecute({ items })}
+        onBrowse={browseDirectories}
+        onCreateDirectory={createDirectory}
+      />
       <section>
         <h2>Create Archive</h2>
         <button onClick={queueArchive}>Queue Archive Job</button>

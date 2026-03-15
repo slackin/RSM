@@ -21,6 +21,8 @@ import type {
   DuplicateScanRequest,
   DuplicateScanResponse,
   HealthResponse,
+  OrganizeExecuteRequest,
+  OrganizeExecuteResponse,
   OrganizePlanRequest,
   OrganizePlanResponse
 } from "@rsm/shared";
@@ -63,7 +65,9 @@ export function createServiceApi(baseURL: string) {
     bulkMoveDuplicates: async (payload: BulkMoveDuplicatesRequest): Promise<BulkMoveDuplicatesResponse> =>
       (await http.post("/api/duplicates/move", payload, { timeout: 0 })).data,
     organizePlan: async (payload: OrganizePlanRequest): Promise<OrganizePlanResponse> =>
-      (await http.post("/api/organize/plan", payload)).data,
+      (await http.post("/api/organize/plan", payload, { timeout: 0 })).data,
+    organizeExecute: async (payload: OrganizeExecuteRequest): Promise<OrganizeExecuteResponse> =>
+      (await http.post("/api/organize/execute", payload, { timeout: 0 })).data,
     compareArchive: async (payload: ArchiveCompareRequest): Promise<ArchiveCompareResponse> =>
       (await http.post("/api/archive/compare", payload, { timeout: 0 })).data,
     cancelCompare: async (): Promise<{ cancelled: boolean }> =>
@@ -71,11 +75,11 @@ export function createServiceApi(baseURL: string) {
     createArchive: async (payload: ArchiveCreateRequest): Promise<{ jobId: string; status: string }> =>
       (await http.post("/api/archive/create", payload)).data,
     archiveDeleteDirectoryFiles: async (payload: ArchiveDeleteDirectoryFilesRequest): Promise<ArchiveDeleteDirectoryFilesResponse> =>
-      (await http.post("/api/archive/delete-directory-files", payload)).data,
+      (await http.post("/api/archive/delete-directory-files", payload, { timeout: 0 })).data,
     archiveMoveDirectoryFiles: async (payload: ArchiveMoveDirectoryFilesRequest): Promise<ArchiveMoveDirectoryFilesResponse> =>
-      (await http.post("/api/archive/move-directory-files", payload)).data,
+      (await http.post("/api/archive/move-directory-files", payload, { timeout: 0 })).data,
     archiveDeleteEntries: async (payload: ArchiveDeleteEntriesRequest): Promise<ArchiveDeleteEntriesResponse> =>
-      (await http.post("/api/archive/delete-entries", payload)).data,
+      (await http.post("/api/archive/delete-entries", payload, { timeout: 0 })).data,
     deleteFile: async (payload: DeleteFileRequest): Promise<DeleteFileResponse> =>
       (await http.post("/api/files/delete", payload)).data
   };

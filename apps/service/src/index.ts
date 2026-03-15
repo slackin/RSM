@@ -383,10 +383,72 @@ server.post("/api/duplicates/move", async (req, reply) => {
 });
 
 server.post("/api/organize/plan", async (req, reply) => {
-  const schema = z.object({ root: z.string(), destination: z.string() });
+  const schema = z.object({
+    root: z.string().trim().min(1),
+    destination: z.string().trim().min(1),
+    categories: z.array(z.enum(["pictures", "video", "audio", "documents", "archives", "other"])).optional(),
+    tinyFileThresholdBytes: z.number().int().min(0).optional()
+  });
   const body = schema.parse(req.body);
-  const items = await buildOrganizePlan(body.root, body.destination);
+  const root = path.resolve(body.root);
+  const destination = path.resolve(body.destination);
+
+  const rootStat = await fs.stat(root).catch(() => null);
+  if (!rootStat?.isDirectory()) {
+    return reply.status(400).send({ error: `Source is not a directory: ${root}` });
+  }
+
+  const items = await buildOrganizePlan(root, destination, body.categories, body.tinyFileThresholdBytes);
   return reply.send({ items });
+});
+
+server.post("/api/organize/execute", async (req, reply) => {
+  const schema = z.object({
+    items: z.array(
+      z.object({
+        source: z.string().trim().min(1),
+        destination: z.string().trim().min(1),
+        category: z.enum(["pictures", "video", "audio", "documents", "archives", "other"])
+      })
+    ).min(1)
+  });
+  const body = schema.parse(req.body);
+
+  const results: Array<{ source: string; destination: string; moved: boolean; error?: string }> = [];
+  let movedFiles = 0;
+
+  for (const item of body.items) {
+    const sourcePath = path.resolve(item.source);
+    const destinationPath = path.resolve(item.destination);
+
+    try {
+      const sourceStat = await fs.stat(sourcePath);
+      if (!sourceStat.isFile()) {
+        results.push({ source: sourcePath, destination: destinationPath, moved: false, error: "Not a file." });
+        continue;
+      }
+
+      await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+      const finalPath = await resolveUniqueDestinationPath(destinationPath);
+      await moveFile(sourcePath, finalPath);
+      movedFiles += 1;
+      results.push({ source: sourcePath, destination: finalPath, moved: true });
+    } catch (error) {
+      results.push({
+        source: sourcePath,
+        destination: destinationPath,
+        moved: false,
+        error: toFsMoveErrorMessage(error)
+      });
+    }
+  }
+
+  return reply.send({
+    totalItems: body.items.length,
+    movedFiles,
+    failedFiles: body.items.length - movedFiles,
+    results
+  });
 });
 
 server.get("/api/fs/entries", async (req, reply) => {
