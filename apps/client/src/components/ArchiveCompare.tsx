@@ -34,6 +34,7 @@ interface Props {
     archivePath: string,
     entries: string[]
   ) => Promise<ArchiveDeleteEntriesResponse>;
+  compareProgress?: string | null;
 }
 
 type ActiveBrowser = "archive" | "directory" | "move-dest" | null;
@@ -285,7 +286,8 @@ export function ArchiveCompare({
   onCreateDirectory,
   onDeleteDirectoryFiles,
   onMoveDirectoryFiles,
-  onDeleteArchiveEntries
+  onDeleteArchiveEntries,
+  compareProgress
 }: Props) {
   const [archivePath, setArchivePath] = useState("");
   const [directoryPath, setDirectoryPath] = useState("");
@@ -499,7 +501,12 @@ export function ArchiveCompare({
     setActionError(null);
     setActionWarning(null);
     try {
-      const res = await onDeleteArchiveEntries(archivePath.trim(), compareResult.duplicateEntries);
+      // archiveDuplicateEntries holds the original archive paths (may differ from the
+      // directory-relative paths in duplicateEntries when the archive has extra prefixes).
+      const archiveEntries = compareResult.archiveDuplicateEntries?.length
+        ? compareResult.archiveDuplicateEntries
+        : compareResult.duplicateEntries;
+      const res = await onDeleteArchiveEntries(archivePath.trim(), archiveEntries);
       if (!res.supported) {
         setActionWarning(res.error ?? "In-archive deletion is only supported for ZIP files.");
       } else {
@@ -679,6 +686,10 @@ export function ArchiveCompare({
           </button>
         )}
       </div>
+
+      {isComparing && compareProgress && (
+        <div className="archiveCompareProgressStatus">{compareProgress}</div>
+      )}
 
       {compareError && <div className="archiveCompareError">{compareError}</div>}
       {actionMessage && <div className="archiveCompareMessage">{actionMessage}</div>}

@@ -65,7 +65,7 @@ export function createServiceApi(baseURL: string) {
     organizePlan: async (payload: OrganizePlanRequest): Promise<OrganizePlanResponse> =>
       (await http.post("/api/organize/plan", payload)).data,
     compareArchive: async (payload: ArchiveCompareRequest): Promise<ArchiveCompareResponse> =>
-      (await http.post("/api/archive/compare", payload)).data,
+      (await http.post("/api/archive/compare", payload, { timeout: 0 })).data,
     createArchive: async (payload: ArchiveCreateRequest): Promise<{ jobId: string; status: string }> =>
       (await http.post("/api/archive/create", payload)).data,
     archiveDeleteDirectoryFiles: async (payload: ArchiveDeleteDirectoryFilesRequest): Promise<ArchiveDeleteDirectoryFilesResponse> =>

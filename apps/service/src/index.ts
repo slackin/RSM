@@ -30,6 +30,17 @@ server.addHook("onRequest", async (req, reply) => {
   }
 });
 
+server.setErrorHandler((error, _req, reply) => {
+  if (error instanceof z.ZodError) {
+    return reply.status(400).send({ error: "Invalid request", details: error.errors });
+  }
+  server.log.error(error);
+  const err = error as { statusCode?: number; message?: string };
+  return reply.status(err.statusCode ?? 500).send({
+    error: err.message ?? "Internal Server Error"
+  });
+});
+
 const progressSubscribers = new Set<(payload: object) => void>();
 
 function publishProgress(payload: object): void {
@@ -573,10 +584,63 @@ server.post("/api/archive/delete-entries", async (req, reply) => {
 });
 
 server.post("/api/archive/compare", async (req, reply) => {
-  const schema = z.object({ archivePath: z.string(), directoryPath: z.string() });
+  const schema = z.object({
+    archivePath: z.string().trim().min(1),
+    directoryPath: z.string().trim().min(1)
+  });
   const body = schema.parse(req.body);
-  const result = await compareArchiveToDirectory(body.archivePath, body.directoryPath);
-  return reply.send(result);
+
+  const archivePath = path.resolve(body.archivePath);
+  const directoryPath = path.resolve(body.directoryPath);
+
+  const archiveStat = await fs.stat(archivePath).catch(() => null);
+  if (!archiveStat?.isFile()) {
+    return reply.status(400).send({ error: `Not a file: ${archivePath}` });
+  }
+
+  const directoryStat = await fs.stat(directoryPath).catch(() => null);
+  if (!directoryStat?.isDirectory()) {
+    return reply.status(400).send({ error: `Not a directory: ${directoryPath}` });
+  }
+
+  try {
+    publishProgress({ phase: "archive_compare_started", archivePath, directoryPath });
+    const result = await compareArchiveToDirectory(archivePath, directoryPath, (stage) => {
+      publishProgress({ phase: "archive_compare_progress", stage });
+    });
+    publishProgress({ phase: "archive_compare_complete" });
+    return reply.send(result);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException & { stderr?: string; level?: string };
+    const code = err.code;
+    const message = err.message ?? "Unknown archive compare error.";
+    const stderr = err.stderr ?? "";
+    const fullText = `${message}\n${stderr}`;
+
+    const badRequestErrorMarkers = [
+      "Unsupported archive format",
+      "No .tar file found inside .tar.7z archive",
+      "Unable to create extraction temp directory",
+      "Can not open the file as archive",
+      "Can not open the file as [7z] archive",
+      "Cannot open file as archive",
+      "Is not archive"
+    ];
+
+    if (badRequestErrorMarkers.some((marker) => fullText.includes(marker))) {
+      return reply.status(400).send({ error: "Not a valid archive or unsupported format." });
+    }
+
+    if (code === "EACCES" || code === "EPERM") {
+      return reply.status(403).send({ error: "Permission denied while comparing archive and directory." });
+    }
+
+    if (code === "ENOENT") {
+      return reply.status(404).send({ error: "Archive or directory path no longer exists." });
+    }
+
+    return reply.status(500).send({ error: message });
+  }
 });
 
 server.post("/api/archive/create", async (req, reply) => {

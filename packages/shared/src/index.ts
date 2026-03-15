@@ -105,7 +105,21 @@ export interface ArchiveCompareRequest {
 }
 
 export interface ArchiveCompareResponse {
+  /**
+   * Paths relative to the comparison directory that exist in both the archive and the
+   * directory. Use these for directory operations (delete/move) and for display.
+   * Indexed in parallel with `archiveDuplicateEntries`.
+   */
   duplicateEntries: string[];
+  /**
+   * Original archive paths corresponding to `duplicateEntries` (same length, same order).
+   * These may differ from `duplicateEntries` when the archive stores files under extra
+   * path prefixes (e.g. archive has "backup/photos/img.jpg" while the directory has
+   * "photos/img.jpg"). Pass these — not `duplicateEntries` — to in-archive deletion.
+   */
+  archiveDuplicateEntries: string[];
+  /** @deprecated — always empty string; kept for backward compatibility. */
+  archiveEntryPrefix: string;
   onlyInArchive: string[];
   onlyInDirectory: string[];
 }

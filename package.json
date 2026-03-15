@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @rsm/shared && npm run build -w @rsm/service && npm run build -w @rsm/client",
+    "deploy": "./scripts/deploy.sh",
     "dev:service": "npm run dev -w @rsm/service",
     "dev:client": "npm run dev -w @rsm/client",
     "start:client": "npm run start -w @rsm/client",

@@ -26,7 +26,7 @@ interface DuplicateScanProgressState {
 interface ProgressEvent {
   phase: string;
   roots?: string[];
-  stage?: "indexing" | "hashing";
+  stage?: "indexing" | "hashing" | "extracting" | "listing" | "scanning";
   currentFile?: string;
   processedSteps?: number;
   totalSteps?: number;
@@ -92,6 +92,7 @@ export default function App() {
   const [scanStatusText, setScanStatusText] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<DuplicateScanProgressState | null>(null);
+  const [archiveCompareProgress, setArchiveCompareProgress] = useState<string | null>(null);
   const [organizePlan, setOrganizePlan] = useState<OrganizePlanResponse | null>(null);
   const [lastArchiveJob, setLastArchiveJob] = useState<string | null>(null);
 
@@ -159,6 +160,26 @@ export default function App() {
           if (!previous) return null;
           return { ...previous, percentComplete: 100 };
         });
+      }
+
+      if (payload.phase === "archive_compare_started") {
+        setArchiveCompareProgress("Starting comparison\u2026");
+        return;
+      }
+
+      if (payload.phase === "archive_compare_progress") {
+        const stageLabels: Record<string, string> = {
+          extracting: "Extracting archive\u2026",
+          listing: "Reading archive entries\u2026",
+          scanning: "Scanning directory\u2026"
+        };
+        setArchiveCompareProgress(stageLabels[payload.stage ?? ""] ?? "Comparing\u2026");
+        return;
+      }
+
+      if (payload.phase === "archive_compare_complete") {
+        setArchiveCompareProgress(null);
+        return;
       }
     };
 
@@ -313,6 +334,7 @@ export default function App() {
         onBulkMoveDuplicates={bulkMoveDuplicateFiles}
       />
       <ArchiveCompare
+        compareProgress={archiveCompareProgress}
         onCompare={(ap, dp) => api.compareArchive({ archivePath: ap, directoryPath: dp })}
         onBrowseEntries={browseEntries}
         onBrowseDirectories={browseDirectories}

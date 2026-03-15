@@ -14,6 +14,8 @@ import { collectFiles } from "./fileWalker.js";
 const execFile = promisify(execFileCallback);
 
 export type ArchiveFormat = "zip" | "tar" | "7z" | "rar" | "tar.7z";
+export type CompareProgressStage = "extracting" | "listing" | "scanning";
+type OnCompareProgress = (stage: CompareProgressStage) => void;
 
 interface ArchiveEntriesForCompare {
   entries: string[];
@@ -176,11 +178,13 @@ export async function listArchiveEntries(archivePath: string): Promise<string[]>
   }
 }
 
-async function listArchiveEntriesForCompare(archivePath: string): Promise<ArchiveEntriesForCompare> {
+async function listArchiveEntriesForCompare(archivePath: string, onProgress?: OnCompareProgress): Promise<ArchiveEntriesForCompare> {
   const format = detectArchiveFormat(archivePath);
 
   if (format === "tar.7z") {
+    onProgress?.("extracting");
     const { tempDir, tarPath } = await extractTarFromTar7z(archivePath);
+    onProgress?.("listing");
     const entries = await listTarEntries(tarPath);
     return {
       entries,
@@ -191,35 +195,101 @@ async function listArchiveEntriesForCompare(archivePath: string): Promise<Archiv
     };
   }
 
+  onProgress?.("listing");
   return {
     entries: await listArchiveEntries(archivePath),
     excludedDirectoryPaths: []
   };
 }
 
+interface ArchiveDirectoryMatch {
+  archiveEntry: string; // original path in the archive
+  dirEntry: string;     // path relative to the comparison directory
+}
+
+/**
+ * Match archive entries to directory-relative file paths using path-suffix semantics.
+ *
+ * Two paths are considered a match when one is a path-component-level suffix of the other:
+ *   - "backup/photos/img.jpg"  matches  "photos/img.jpg"  (archive has extra prefix)
+ *   - "img.jpg"               matches  "photos/img.jpg"  (dir has extra prefix)
+ *   - "photos/img.jpg"        matches  "photos/img.jpg"  (exact)
+ *
+ * This handles real-world archive layouts where the internal directory structure does
+ * not perfectly mirror the depth of the selected comparison directory.
+ *
+ * Matching is unambiguous: each archive entry and each directory entry is used at most
+ * once. When multiple archive entries share the same basename, only the one whose path
+ * is a component-suffix of the directory entry is accepted.
+ */
+function matchArchiveEntriesToDirectory(
+  archiveEntries: string[],
+  dirFiles: string[]
+): ArchiveDirectoryMatch[] {
+  const results: ArchiveDirectoryMatch[] = [];
+  const usedArchive = new Set<string>();
+  const usedDir = new Set<string>();
+
+  // Index archive entries by basename for O(1) candidate lookup.
+  const archiveByBasename = new Map<string, string[]>();
+  for (const ae of archiveEntries) {
+    const slash = ae.lastIndexOf("/");
+    const base = slash === -1 ? ae : ae.slice(slash + 1);
+    let list = archiveByBasename.get(base);
+    if (!list) { list = []; archiveByBasename.set(base, list); }
+    list.push(ae);
+  }
+
+  for (const de of dirFiles) {
+    if (usedDir.has(de)) continue;
+    const slash = de.lastIndexOf("/");
+    const base = slash === -1 ? de : de.slice(slash + 1);
+    const candidates = archiveByBasename.get(base);
+    if (!candidates) continue;
+
+    for (const ae of candidates) {
+      if (usedArchive.has(ae)) continue;
+      // Accept if one path is a component-level suffix of the other.
+      if (ae === de || ae.endsWith(`/${de}`) || de.endsWith(`/${ae}`)) {
+        results.push({ archiveEntry: ae, dirEntry: de });
+        usedArchive.add(ae);
+        usedDir.add(de);
+        break;
+      }
+    }
+  }
+
+  return results;
+}
+
 export async function compareArchiveToDirectory(
   archivePath: string,
-  directoryPath: string
+  directoryPath: string,
+  onProgress?: OnCompareProgress
 ): Promise<ArchiveCompareResponse> {
   await fs.access(archivePath);
   await fs.access(directoryPath);
 
   const normalizedDirectoryPath = path.resolve(directoryPath);
-  const archiveInfo = await listArchiveEntriesForCompare(archivePath);
+  const archiveInfo = await listArchiveEntriesForCompare(archivePath, onProgress);
 
   try {
+    onProgress?.("scanning");
     const dirFiles = await collectFiles([normalizedDirectoryPath], {
       excludePaths: archiveInfo.excludedDirectoryPaths
     });
     const relDirFiles = dirFiles.map((f) => path.relative(normalizedDirectoryPath, f).replaceAll("\\", "/"));
 
-    const archiveSet = new Set(archiveInfo.entries);
-    const dirSet = new Set(relDirFiles);
+    const matches = matchArchiveEntriesToDirectory(archiveInfo.entries, relDirFiles);
+    const matchedArchive = new Set(matches.map((m) => m.archiveEntry));
+    const matchedDir = new Set(matches.map((m) => m.dirEntry));
 
     return {
-      duplicateEntries: archiveInfo.entries.filter((entry) => dirSet.has(entry)),
-      onlyInArchive: archiveInfo.entries.filter((entry) => !dirSet.has(entry)),
-      onlyInDirectory: relDirFiles.filter((entry) => !archiveSet.has(entry))
+      duplicateEntries: matches.map((m) => m.dirEntry),
+      archiveDuplicateEntries: matches.map((m) => m.archiveEntry),
+      archiveEntryPrefix: "",
+      onlyInArchive: archiveInfo.entries.filter((ae) => !matchedArchive.has(ae)),
+      onlyInDirectory: relDirFiles.filter((de) => !matchedDir.has(de))
     };
   } finally {
     await archiveInfo.cleanup?.();
