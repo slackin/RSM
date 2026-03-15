@@ -30,6 +30,9 @@ interface ProgressEvent {
   currentFile?: string;
   processedSteps?: number;
   totalSteps?: number;
+  detail?: string;
+  processed?: number;
+  total?: number;
 }
 
 function toWebsocketUrl(input: string): string {
@@ -168,12 +171,22 @@ export default function App() {
       }
 
       if (payload.phase === "archive_compare_progress") {
+        // Use the detailed message from the service if available
+        if (payload.detail) {
+          setArchiveCompareProgress(payload.detail);
+          return;
+        }
         const stageLabels: Record<string, string> = {
           extracting: "Extracting archive\u2026",
           listing: "Reading archive entries\u2026",
           scanning: "Scanning directory\u2026"
         };
         setArchiveCompareProgress(stageLabels[payload.stage ?? ""] ?? "Comparing\u2026");
+        return;
+      }
+
+      if (payload.phase === "archive_compare_cancelled") {
+        setArchiveCompareProgress(null);
         return;
       }
 
@@ -336,6 +349,7 @@ export default function App() {
       <ArchiveCompare
         compareProgress={archiveCompareProgress}
         onCompare={(ap, dp) => api.compareArchive({ archivePath: ap, directoryPath: dp })}
+        onCancelCompare={() => api.cancelCompare()}
         onBrowseEntries={browseEntries}
         onBrowseDirectories={browseDirectories}
         onCreateDirectory={createDirectory}

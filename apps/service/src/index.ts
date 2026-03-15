@@ -576,11 +576,24 @@ server.post("/api/archive/delete-entries", async (req, reply) => {
     return reply.send({ removed, failed, archivePath, supported: true });
   } catch (error) {
     const message = (error as Error).message;
-    const isUnsupported = message.includes("only supported for ZIP");
+    const isUnsupported = message.includes("not supported");
     return reply
       .status(isUnsupported ? 400 : 500)
       .send({ removed: 0, failed: body.entries.length, archivePath, supported: !isUnsupported, error: message });
   }
+});
+
+// Active archive compare abort controller (only one compare at a time).
+let activeCompareAbort: AbortController | null = null;
+
+server.post("/api/archive/compare/cancel", async (_req, reply) => {
+  if (activeCompareAbort) {
+    activeCompareAbort.abort();
+    activeCompareAbort = null;
+    publishProgress({ phase: "archive_compare_cancelled" });
+    return reply.send({ cancelled: true });
+  }
+  return reply.send({ cancelled: false });
 });
 
 server.post("/api/archive/compare", async (req, reply) => {
@@ -603,14 +616,22 @@ server.post("/api/archive/compare", async (req, reply) => {
     return reply.status(400).send({ error: `Not a directory: ${directoryPath}` });
   }
 
+  const abortController = new AbortController();
+  activeCompareAbort = abortController;
+
   try {
     publishProgress({ phase: "archive_compare_started", archivePath, directoryPath });
-    const result = await compareArchiveToDirectory(archivePath, directoryPath, (stage) => {
-      publishProgress({ phase: "archive_compare_progress", stage });
-    });
+    const result = await compareArchiveToDirectory(archivePath, directoryPath, (event) => {
+      publishProgress({ phase: "archive_compare_progress", ...event });
+    }, abortController.signal);
     publishProgress({ phase: "archive_compare_complete" });
     return reply.send(result);
   } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      publishProgress({ phase: "archive_compare_cancelled" });
+      return reply.status(499).send({ error: "Compare cancelled by user." });
+    }
+
     const err = error as NodeJS.ErrnoException & { stderr?: string; level?: string };
     const code = err.code;
     const message = err.message ?? "Unknown archive compare error.";
@@ -640,6 +661,10 @@ server.post("/api/archive/compare", async (req, reply) => {
     }
 
     return reply.status(500).send({ error: message });
+  } finally {
+    if (activeCompareAbort === abortController) {
+      activeCompareAbort = null;
+    }
   }
 });
 

@@ -15,7 +15,22 @@ const execFile = promisify(execFileCallback);
 
 export type ArchiveFormat = "zip" | "tar" | "7z" | "rar" | "tar.7z";
 export type CompareProgressStage = "extracting" | "listing" | "scanning";
-type OnCompareProgress = (stage: CompareProgressStage) => void;
+
+export interface CompareProgressEvent {
+  stage: CompareProgressStage;
+  /** Human-readable detail (e.g. current file name during extraction). */
+  detail?: string;
+  /** Number of items processed so far in this stage. */
+  processed?: number;
+  /** Total expected items for this stage (if known). */
+  total?: number;
+}
+
+type OnCompareProgress = (event: CompareProgressEvent) => void;
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("Archive compare cancelled", "AbortError");
+}
 
 interface ArchiveEntriesForCompare {
   entries: string[];
@@ -124,14 +139,69 @@ async function createExtractionTempDirectory(archivePath: string, requiredBytes:
   );
 }
 
-async function extractTarFromTar7z(archivePath: string): Promise<{ tempDir: string; tarPath: string }> {
+async function extractTarFromTar7z(
+  archivePath: string,
+  onProgress?: OnCompareProgress,
+  signal?: AbortSignal
+): Promise<{ tempDir: string; tarPath: string }> {
   const archiveStat = await fs.stat(archivePath);
   const requiredBytes = estimateRequiredExtractionBytes(archiveStat.size);
   const tempDir = await createExtractionTempDirectory(archivePath, requiredBytes);
 
   try {
+    throwIfAborted(signal);
     const sevenZipBinary = (sevenBin as { path7za: string }).path7za;
-    await execFile(sevenZipBinary, ["e", "-y", `-o${tempDir}`, archivePath]);
+
+    // Use spawn to get per-file extraction progress
+    await new Promise<void>((resolve, reject) => {
+      const child = execFileCallback(
+        sevenZipBinary,
+        ["e", "-y", `-o${tempDir}`, "-bsp1", archivePath],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+
+      // Listen for abort to kill the child process
+      const onAbort = () => {
+        child.kill("SIGTERM");
+        reject(new DOMException("Archive compare cancelled", "AbortError"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+
+      // Stream extraction progress from stdout
+      let lineBuffer = "";
+      child.stdout?.on("data", (chunk: Buffer) => {
+        lineBuffer += chunk.toString();
+        // 7zip progress lines may use \r without \n
+        const parts = lineBuffer.split(/[\r\n]/);
+        lineBuffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const trimmed = part.trim();
+          if (!trimmed) continue;
+          // Lines like "- filename" or percentage lines
+          const percentMatch = trimmed.match(/^\s*(\d+)%/);
+          if (percentMatch) {
+            onProgress?.({
+              stage: "extracting",
+              detail: `Extracting: ${percentMatch[1]}%`,
+              processed: Number(percentMatch[1]),
+              total: 100
+            });
+          } else if (trimmed.startsWith("- ")) {
+            onProgress?.({
+              stage: "extracting",
+              detail: `Extracting: ${trimmed.slice(2)}`
+            });
+          }
+        }
+      });
+
+      child.on("close", () => {
+        signal?.removeEventListener("abort", onAbort);
+      });
+    });
 
     const extractedEntries = await fs.readdir(tempDir, { withFileTypes: true });
     const tarCandidates = extractedEntries
@@ -178,14 +248,20 @@ export async function listArchiveEntries(archivePath: string): Promise<string[]>
   }
 }
 
-async function listArchiveEntriesForCompare(archivePath: string, onProgress?: OnCompareProgress): Promise<ArchiveEntriesForCompare> {
+async function listArchiveEntriesForCompare(
+  archivePath: string,
+  onProgress?: OnCompareProgress,
+  signal?: AbortSignal
+): Promise<ArchiveEntriesForCompare> {
   const format = detectArchiveFormat(archivePath);
 
   if (format === "tar.7z") {
-    onProgress?.("extracting");
-    const { tempDir, tarPath } = await extractTarFromTar7z(archivePath);
-    onProgress?.("listing");
+    onProgress?.({ stage: "extracting", detail: "Starting extraction\u2026" });
+    const { tempDir, tarPath } = await extractTarFromTar7z(archivePath, onProgress, signal);
+    throwIfAborted(signal);
+    onProgress?.({ stage: "listing", detail: "Reading tar entries\u2026" });
     const entries = await listTarEntries(tarPath);
+    onProgress?.({ stage: "listing", detail: `Found ${entries.length} entries in archive` });
     return {
       entries,
       excludedDirectoryPaths: [tempDir],
@@ -195,9 +271,12 @@ async function listArchiveEntriesForCompare(archivePath: string, onProgress?: On
     };
   }
 
-  onProgress?.("listing");
+  throwIfAborted(signal);
+  onProgress?.({ stage: "listing", detail: "Reading archive entries\u2026" });
+  const entries = await listArchiveEntries(archivePath);
+  onProgress?.({ stage: "listing", detail: `Found ${entries.length} entries in archive` });
   return {
-    entries: await listArchiveEntries(archivePath),
+    entries,
     excludedDirectoryPaths: []
   };
 }
@@ -265,21 +344,27 @@ function matchArchiveEntriesToDirectory(
 export async function compareArchiveToDirectory(
   archivePath: string,
   directoryPath: string,
-  onProgress?: OnCompareProgress
+  onProgress?: OnCompareProgress,
+  signal?: AbortSignal
 ): Promise<ArchiveCompareResponse> {
   await fs.access(archivePath);
   await fs.access(directoryPath);
+  throwIfAborted(signal);
 
   const normalizedDirectoryPath = path.resolve(directoryPath);
-  const archiveInfo = await listArchiveEntriesForCompare(archivePath, onProgress);
+  const archiveInfo = await listArchiveEntriesForCompare(archivePath, onProgress, signal);
 
   try {
-    onProgress?.("scanning");
+    throwIfAborted(signal);
+    onProgress?.({ stage: "scanning", detail: "Scanning directory\u2026" });
     const dirFiles = await collectFiles([normalizedDirectoryPath], {
-      excludePaths: archiveInfo.excludedDirectoryPaths
+      excludePaths: archiveInfo.excludedDirectoryPaths,
+      signal
     });
+    onProgress?.({ stage: "scanning", detail: `Found ${dirFiles.length} files in directory. Matching\u2026` });
     const relDirFiles = dirFiles.map((f) => path.relative(normalizedDirectoryPath, f).replaceAll("\\", "/"));
 
+    throwIfAborted(signal);
     const matches = matchArchiveEntriesToDirectory(archiveInfo.entries, relDirFiles);
     const matchedArchive = new Set(matches.map((m) => m.archiveEntry));
     const matchedDir = new Set(matches.map((m) => m.dirEntry));
@@ -297,33 +382,216 @@ export async function compareArchiveToDirectory(
 }
 
 /**
- * Remove specific entries from a ZIP archive in-place.
- * Only ZIP format is supported; other formats throw with a clear message.
+ * Determine the tar compression flag for creation based on archive extension.
+ */
+function tarCompressionFlag(archivePath: string): string {
+  const lower = archivePath.toLowerCase();
+  if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return "z";
+  if (lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2")) return "j";
+  return "";
+}
+
+/**
+ * Extract an archive's full contents to a temporary directory.
+ * The caller is responsible for cleaning up the returned directory.
+ */
+async function extractFullArchive(
+  archivePath: string,
+  format: ArchiveFormat
+): Promise<string> {
+  const archiveStat = await fs.stat(archivePath);
+  const requiredBytes = estimateRequiredExtractionBytes(archiveStat.size);
+  const tempDir = await createExtractionTempDirectory(archivePath, requiredBytes);
+
+  try {
+    const sevenZipBin = (sevenBin as { path7za: string }).path7za;
+
+    switch (format) {
+      case "tar": {
+        await execFile("tar", ["xf", archivePath, "-C", tempDir]);
+        break;
+      }
+      case "7z": {
+        await execFile(sevenZipBin, ["x", "-y", `-o${tempDir}`, archivePath]);
+        break;
+      }
+      case "tar.7z": {
+        // Extract 7z to get inner tar file
+        await execFile(sevenZipBin, ["x", "-y", `-o${tempDir}`, archivePath]);
+
+        const extracted = await fs.readdir(tempDir, { withFileTypes: true });
+        const tarFiles = extracted
+          .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".tar"))
+          .map((e) => e.name);
+        if (tarFiles.length === 0) throw new Error("No .tar file found inside .tar.7z archive.");
+
+        const expectedTarName = path.basename(archivePath).slice(0, -3).toLowerCase();
+        const tarFileName = tarFiles.find((n) => n.toLowerCase() === expectedTarName) ?? tarFiles[0];
+        const tarPath = path.join(tempDir, tarFileName);
+
+        // Extract tar contents to a separate directory, then swap
+        const contentDir = await fs.mkdtemp(path.join(path.dirname(tempDir), ".rsm-tar-contents-"));
+        try {
+          await execFile("tar", ["xf", tarPath, "-C", contentDir]);
+          await fs.rm(tempDir, { recursive: true, force: true });
+          await fs.rename(contentDir, tempDir);
+        } catch (error) {
+          await fs.rm(contentDir, { recursive: true, force: true });
+          throw error;
+        }
+        break;
+      }
+      default:
+        throw new Error(`Extraction not implemented for format: ${format}`);
+    }
+    return tempDir;
+  } catch (error) {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * Recursively remove empty directories under (but not including) the root.
+ */
+async function removeEmptyDirectories(dir: string): Promise<void> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const fullPath = path.join(dir, entry.name);
+      await removeEmptyDirectories(fullPath);
+      try { await fs.rmdir(fullPath); } catch { /* not empty, ignore */ }
+    }
+  }
+}
+
+/**
+ * Repackage a directory into an archive, atomically replacing the original.
+ */
+async function repackageArchive(
+  sourceDir: string,
+  archivePath: string,
+  format: ArchiveFormat
+): Promise<void> {
+  const tempOutput = archivePath + ".rsm-repack-tmp";
+
+  try {
+    const sevenZipBin = (sevenBin as { path7za: string }).path7za;
+
+    switch (format) {
+      case "tar": {
+        const flag = tarCompressionFlag(archivePath);
+        await execFile("tar", [`c${flag}f`, tempOutput, "-C", sourceDir, "."]);
+        break;
+      }
+      case "7z": {
+        await execFile(sevenZipBin, ["a", "-y", path.resolve(tempOutput), "."], { cwd: sourceDir });
+        break;
+      }
+      case "tar.7z": {
+        const tempTar = tempOutput + ".tar";
+        try {
+          await execFile("tar", ["cf", tempTar, "-C", sourceDir, "."]);
+          await execFile(sevenZipBin, ["a", "-y", path.resolve(tempOutput), tempTar]);
+        } finally {
+          await fs.unlink(tempTar).catch(() => {});
+        }
+        break;
+      }
+      default:
+        throw new Error(`Repackaging not supported for format: ${format}`);
+    }
+
+    // Atomically replace the original archive
+    await fs.rename(tempOutput, archivePath);
+  } catch (error) {
+    await fs.unlink(tempOutput).catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * Delete specific entries from an archive via extract → delete → repackage.
+ */
+async function deleteViaRepackage(
+  archivePath: string,
+  entries: string[],
+  format: ArchiveFormat
+): Promise<{ removed: number; failed: number }> {
+  const resolvedArchive = path.resolve(archivePath);
+  const tempDir = await extractFullArchive(resolvedArchive, format);
+
+  try {
+    let removed = 0;
+    let failed = 0;
+
+    for (const entry of entries) {
+      const normalizedEntry = path.normalize(entry).replace(/^(\.\.[\/\\])+/, "");
+      const filePath = path.join(tempDir, normalizedEntry);
+
+      // Path traversal check
+      if (!filePath.startsWith(tempDir + path.sep) && filePath !== tempDir) {
+        failed += 1;
+        continue;
+      }
+
+      try {
+        await fs.unlink(filePath);
+        removed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+
+    if (removed > 0) {
+      await removeEmptyDirectories(tempDir);
+      await repackageArchive(tempDir, resolvedArchive, format);
+    }
+
+    return { removed, failed };
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Remove specific entries from an archive.
+ * Supports ZIP (in-place via AdmZip), tar, 7z, and tar.7z (via extract-delete-repackage).
+ * RAR is not supported (requires proprietary tools to create).
  */
 export async function deleteArchiveEntries(
   archivePath: string,
   entries: string[]
 ): Promise<{ removed: number; failed: number }> {
   const format = detectArchiveFormat(archivePath);
-  if (format !== "zip") {
-    throw new Error(
-      "In-archive deletion is only supported for ZIP files. For other formats, delete from the directory instead."
-    );
+
+  if (!format) {
+    throw new Error("Unrecognized archive format.");
   }
 
-  const zip = new AdmZip(archivePath);
-  let removed = 0;
-  let failed = 0;
+  // ZIP: efficient in-place deletion via AdmZip
+  if (format === "zip") {
+    const zip = new AdmZip(archivePath);
+    let removed = 0;
+    let failed = 0;
 
-  for (const entry of entries) {
-    try {
-      zip.deleteFile(entry);
-      removed += 1;
-    } catch {
-      failed += 1;
+    for (const entry of entries) {
+      try {
+        zip.deleteFile(entry);
+        removed += 1;
+      } catch {
+        failed += 1;
+      }
     }
+
+    zip.writeZip(archivePath);
+    return { removed, failed };
   }
 
-  zip.writeZip(archivePath);
-  return { removed, failed };
+  if (format === "rar") {
+    throw new Error("In-archive deletion is not supported for RAR files. RAR creation requires proprietary tools.");
+  }
+
+  // tar, 7z, tar.7z: extract → delete → repackage
+  return deleteViaRepackage(archivePath, entries, format);
 }

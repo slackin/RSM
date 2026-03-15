@@ -3,6 +3,7 @@ import path from "node:path";
 
 export interface CollectFilesOptions {
   excludePaths?: string[];
+  signal?: AbortSignal;
 }
 
 function isSameOrDescendantPath(candidatePath: string, basePath: string): boolean {
@@ -23,6 +24,7 @@ export async function collectFiles(roots: string[], options?: CollectFilesOption
   };
 
   async function walk(current: string): Promise<void> {
+    if (options?.signal?.aborted) throw new DOMException("Archive compare cancelled", "AbortError");
     const resolvedCurrent = path.resolve(current);
     if (excludedRoots.some((excludedRoot) => isSameOrDescendantPath(resolvedCurrent, excludedRoot))) {
       return;

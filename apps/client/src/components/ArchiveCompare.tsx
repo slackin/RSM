@@ -34,6 +34,7 @@ interface Props {
     archivePath: string,
     entries: string[]
   ) => Promise<ArchiveDeleteEntriesResponse>;
+  onCancelCompare: () => Promise<unknown>;
   compareProgress?: string | null;
 }
 
@@ -287,6 +288,7 @@ export function ArchiveCompare({
   onDeleteDirectoryFiles,
   onMoveDirectoryFiles,
   onDeleteArchiveEntries,
+  onCancelCompare,
   compareProgress
 }: Props) {
   const [archivePath, setArchivePath] = useState("");
@@ -415,9 +417,22 @@ export function ArchiveCompare({
       setArchiveOnlyExpanded(false);
       setDirOnlyExpanded(false);
     } catch (error) {
-      setCompareError(toApiErrorMessage(error, "Comparison failed. Check the paths and try again."));
+      // Don't show error when cancelled by user
+      if (axios.isAxiosError(error) && error.response?.status === 499) {
+        setCompareError(null);
+      } else {
+        setCompareError(toApiErrorMessage(error, "Comparison failed. Check the paths and try again."));
+      }
     } finally {
       setIsComparing(false);
+    }
+  };
+
+  const handleCancelCompare = async () => {
+    try {
+      await onCancelCompare();
+    } catch {
+      // Best-effort cancel
     }
   };
 
@@ -508,7 +523,7 @@ export function ArchiveCompare({
         : compareResult.duplicateEntries;
       const res = await onDeleteArchiveEntries(archivePath.trim(), archiveEntries);
       if (!res.supported) {
-        setActionWarning(res.error ?? "In-archive deletion is only supported for ZIP files.");
+        setActionWarning(res.error ?? "In-archive deletion is not supported for this archive format.");
       } else {
         setActionMessage(
           `Removed ${res.removed} of ${compareResult.duplicateEntries.length} entries from the archive.` +
@@ -529,7 +544,7 @@ export function ArchiveCompare({
       }
     } catch (error) {
       const msg = toApiErrorMessage(error, "Delete from archive failed.");
-      if (msg.toLowerCase().includes("zip")) {
+      if (msg.toLowerCase().includes("not supported")) {
         setActionWarning(msg);
       } else {
         setActionError(msg);
@@ -670,8 +685,14 @@ export function ArchiveCompare({
           onClick={() => void handleCompare()}
         >
           {isComparing ? "Comparing…" : "Compare"}
-        </button>
-        {compareResult && !isBusy && (
+        </button>        {isComparing && (
+          <button
+            className="archiveCompareButton archiveCompareButtonDanger"
+            onClick={() => void handleCancelCompare()}
+          >
+            Stop
+          </button>
+        )}        {compareResult && !isBusy && (
           <button
             className="archiveCompareButton"
             onClick={() => {
