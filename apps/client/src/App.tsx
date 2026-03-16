@@ -341,7 +341,7 @@ export default function App() {
       />
       <ArchiveCompare
         compareProgress={archiveCompareProgress}
-        onCompare={(ap, dp) => api.compareArchive({ archivePath: ap, directoryPath: dp })}
+        onCompare={(ap, dp, recursive) => api.compareArchive({ archivePath: ap, directoryPath: dp, recursive })}
         onCancelCompare={() => api.cancelCompare()}
         onBrowseEntries={browseEntries}
         onBrowseDirectories={browseDirectories}

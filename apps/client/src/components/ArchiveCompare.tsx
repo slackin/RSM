@@ -17,7 +17,7 @@ const ARCHIVE_EXTENSIONS = ".zip,.7z,.rar,.tar,.tar.gz,.tgz,.tar.bz2,.tbz2,.tar.
 const ENTRIES_PREVIEW_LIMIT = 200;
 
 interface Props {
-  onCompare: (archivePath: string, directoryPath: string) => Promise<ArchiveCompareResponse>;
+  onCompare: (archivePath: string, directoryPath: string, recursive?: boolean) => Promise<ArchiveCompareResponse>;
   onBrowseEntries: (path?: string, fileExtensions?: string) => Promise<BrowseEntriesResponse>;
   onBrowseDirectories: (path?: string) => Promise<BrowseDirectoriesResponse>;
   onCreateDirectory: (parentPath: string, name: string) => Promise<CreateDirectoryResponse>;
@@ -295,6 +295,7 @@ export function ArchiveCompare({
   const [directoryPath, setDirectoryPath] = useState("");
 
   const [isComparing, setIsComparing] = useState(false);
+  const [recursive, setRecursive] = useState(false);
   const [compareResult, setCompareResult] = useState<ArchiveCompareResponse | null>(null);
   const [compareError, setCompareError] = useState<string | null>(null);
 
@@ -411,7 +412,7 @@ export function ArchiveCompare({
     setActionError(null);
     setActionWarning(null);
     try {
-      const result = await onCompare(ap, dp);
+      const result = await onCompare(ap, dp, recursive);
       setCompareResult(result);
       setDuplicatesExpanded(result.duplicateEntries.length > 0);
       setArchiveOnlyExpanded(false);
@@ -447,6 +448,7 @@ export function ArchiveCompare({
       const res = await onDeleteDirectoryFiles(directoryPath.trim(), compareResult.duplicateEntries);
       setActionMessage(
         `Deleted ${res.deleted} of ${compareResult.duplicateEntries.length} duplicate files from the directory.` +
+        (res.removedDirs > 0 ? ` Removed ${res.removedDirs} empty ${res.removedDirs === 1 ? "directory" : "directories"}.` : "") +
         (res.failed > 0 ? ` ${res.failed} failed.` : "")
       );
       if (res.failed > 0) {
@@ -485,6 +487,7 @@ export function ArchiveCompare({
       );
       setActionMessage(
         `Moved ${res.moved} of ${compareResult.duplicateEntries.length} duplicate files to ${res.destinationRoot}.` +
+        (res.removedDirs > 0 ? ` Removed ${res.removedDirs} empty ${res.removedDirs === 1 ? "directory" : "directories"}.` : "") +
         (res.failed > 0 ? ` ${res.failed} failed.` : "")
       );
       if (res.failed > 0) {
@@ -676,6 +679,18 @@ export function ArchiveCompare({
             />
           )}
         </div>
+      </div>
+
+      <div className="archiveCompareOptions">
+        <label className="archiveCompareCheckboxLabel">
+          <input
+            type="checkbox"
+            checked={recursive}
+            disabled={isBusy}
+            onChange={(e) => setRecursive(e.target.checked)}
+          />
+          Recursive (check inside nested archives, including .pk3)
+        </label>
       </div>
 
       <div className="archiveCompareActions">

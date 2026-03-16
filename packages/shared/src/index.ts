@@ -123,6 +123,7 @@ export interface OrganizeExecuteResponse {
 export interface ArchiveCompareRequest {
   archivePath: string;
   directoryPath: string;
+  recursive?: boolean;
 }
 
 export interface ArchiveCompareResponse {
@@ -177,6 +178,7 @@ export interface ArchiveDeleteDirectoryFilesResult {
 export interface ArchiveDeleteDirectoryFilesResponse {
   deleted: number;
   failed: number;
+  removedDirs: number;
   results: ArchiveDeleteDirectoryFilesResult[];
 }
 
@@ -196,6 +198,7 @@ export interface ArchiveMoveDirectoryFilesResult {
 export interface ArchiveMoveDirectoryFilesResponse {
   moved: number;
   failed: number;
+  removedDirs: number;
   destinationRoot: string;
   results: ArchiveMoveDirectoryFilesResult[];
 }

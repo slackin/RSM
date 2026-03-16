@@ -41,7 +41,7 @@ interface ArchiveEntriesForCompare {
 export function detectArchiveFormat(archivePath: string): ArchiveFormat | null {
   const lower = archivePath.toLowerCase();
   if (lower.endsWith(".tar.7z")) return "tar.7z";
-  if (lower.endsWith(".zip")) return "zip";
+  if (lower.endsWith(".zip") || lower.endsWith(".pk3")) return "zip";
   if (lower.endsWith(".tar") || lower.endsWith(".tar.gz") || lower.endsWith(".tgz") || lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2")) return "tar";
   if (lower.endsWith(".7z")) return "7z";
   if (lower.endsWith(".rar")) return "rar";
@@ -341,11 +341,126 @@ function matchArchiveEntriesToDirectory(
   return results;
 }
 
+/**
+ * Recursively expand nested archive entries.
+ * For each entry that looks like a supported archive, extract it to a temp dir,
+ * list its contents, and prefix them with the archive entry name.
+ */
+async function expandNestedArchiveEntries(
+  archivePath: string,
+  entries: string[],
+  onProgress?: OnCompareProgress,
+  signal?: AbortSignal
+): Promise<{ expanded: string[]; tempDirs: string[] }> {
+  const NESTED_ARCHIVE_EXTENSIONS = [".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.7z", ".zip", ".pk3", ".7z", ".rar", ".tar"];
+
+  function isNestedArchive(entryName: string): boolean {
+    const lower = entryName.toLowerCase();
+    return NESTED_ARCHIVE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+  }
+
+  /**
+   * Return the parent directory portion of an entry path.
+   * "baseq3/pak0.pk3" → "baseq3", "pak0.pk3" → "".
+   * The nested archive filename is NOT used as a virtual directory because it
+   * doesn't correspond to any real directory on disk — the contents of a pk3/zip
+   * are logically merged into the parent directory.
+   */
+  function parentPrefix(entryPath: string): string {
+    const slash = entryPath.lastIndexOf("/");
+    return slash === -1 ? "" : entryPath.substring(0, slash);
+  }
+
+  function prefixed(prefix: string, inner: string): string {
+    return prefix ? `${prefix}/${inner}` : inner;
+  }
+
+  const format = detectArchiveFormat(archivePath);
+  if (!format) return { expanded: entries, tempDirs: [] };
+
+  const nestedEntries = entries.filter(isNestedArchive);
+  if (nestedEntries.length === 0) return { expanded: entries, tempDirs: [] };
+
+  // We need to extract the outer archive to access nested archives
+  onProgress?.({ stage: "extracting", detail: "Extracting outer archive for recursive scan\u2026" });
+  throwIfAborted(signal);
+
+  let outerDir: string;
+  outerDir = await extractFullArchive(archivePath, format);
+
+  const tempDirs = [outerDir];
+  const result: string[] = [];
+
+  for (const entry of entries) {
+    if (!isNestedArchive(entry)) {
+      result.push(entry);
+      continue;
+    }
+
+    throwIfAborted(signal);
+    const nestedPath = path.join(outerDir, ...entry.split("/"));
+    try {
+      await fs.access(nestedPath);
+    } catch {
+      // Nested archive file not found after extraction — keep as regular entry
+      result.push(entry);
+      continue;
+    }
+
+    onProgress?.({ stage: "listing", detail: `Reading nested archive: ${entry}\u2026` });
+    const entryDir = parentPrefix(entry);
+    try {
+      const innerEntries = await listArchiveEntries(nestedPath);
+      // Prefix inner entries with the nested archive's parent directory
+      for (const inner of innerEntries) {
+        result.push(prefixed(entryDir, inner));
+      }
+      // Recursively expand further nesting
+      const deeper = innerEntries.filter(isNestedArchive);
+      if (deeper.length > 0) {
+        const nestedFormat = detectArchiveFormat(nestedPath);
+        if (nestedFormat) {
+          // For deeper nesting, extract the inner archive and recurse
+          const deepExpanded = await expandNestedArchiveEntries(
+            nestedPath,
+            innerEntries,
+            onProgress,
+            signal
+          );
+          tempDirs.push(...deepExpanded.tempDirs);
+          // Replace the prefixed entries we just added with the deeper-expanded versions
+          // Remove the shallow inner entries and add the deep ones
+          const shallowCount = innerEntries.length;
+          result.splice(result.length - shallowCount, shallowCount);
+          for (const de of deepExpanded.expanded) {
+            result.push(prefixed(entryDir, de));
+          }
+        }
+      }
+    } catch (err) {
+      // If we can't read the nested archive, keep it as a regular entry
+      result.push(entry);
+    }
+  }
+
+  // Deduplicate: multiple nested archives in the same directory may contribute
+  // identical inner paths (e.g. two pk3 files both containing maps/q3dm1.bsp).
+  const seen = new Set<string>();
+  const unique = result.filter((e) => {
+    if (seen.has(e)) return false;
+    seen.add(e);
+    return true;
+  });
+
+  return { expanded: unique, tempDirs };
+}
+
 export async function compareArchiveToDirectory(
   archivePath: string,
   directoryPath: string,
   onProgress?: OnCompareProgress,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { recursive?: boolean }
 ): Promise<ArchiveCompareResponse> {
   await fs.access(archivePath);
   await fs.access(directoryPath);
@@ -353,19 +468,37 @@ export async function compareArchiveToDirectory(
 
   const normalizedDirectoryPath = path.resolve(directoryPath);
   const archiveInfo = await listArchiveEntriesForCompare(archivePath, onProgress, signal);
+  const recursiveTempDirs: string[] = [];
 
   try {
+    let finalEntries = archiveInfo.entries;
+
+    if (options?.recursive) {
+      onProgress?.({ stage: "listing", detail: "Checking for nested archives\u2026" });
+      const expanded = await expandNestedArchiveEntries(
+        archivePath,
+        archiveInfo.entries,
+        onProgress,
+        signal
+      );
+      finalEntries = expanded.expanded;
+      recursiveTempDirs.push(...expanded.tempDirs);
+      if (finalEntries.length !== archiveInfo.entries.length) {
+        onProgress?.({ stage: "listing", detail: `Expanded to ${finalEntries.length} entries (from ${archiveInfo.entries.length})` });
+      }
+    }
+
     throwIfAborted(signal);
     onProgress?.({ stage: "scanning", detail: "Scanning directory\u2026" });
     const dirFiles = await collectFiles([normalizedDirectoryPath], {
-      excludePaths: archiveInfo.excludedDirectoryPaths,
+      excludePaths: [...archiveInfo.excludedDirectoryPaths, ...recursiveTempDirs],
       signal
     });
     onProgress?.({ stage: "scanning", detail: `Found ${dirFiles.length} files in directory. Matching\u2026` });
     const relDirFiles = dirFiles.map((f) => path.relative(normalizedDirectoryPath, f).replaceAll("\\", "/"));
 
     throwIfAborted(signal);
-    const matches = matchArchiveEntriesToDirectory(archiveInfo.entries, relDirFiles);
+    const matches = matchArchiveEntriesToDirectory(finalEntries, relDirFiles);
     const matchedArchive = new Set(matches.map((m) => m.archiveEntry));
     const matchedDir = new Set(matches.map((m) => m.dirEntry));
 
@@ -373,11 +506,14 @@ export async function compareArchiveToDirectory(
       duplicateEntries: matches.map((m) => m.dirEntry),
       archiveDuplicateEntries: matches.map((m) => m.archiveEntry),
       archiveEntryPrefix: "",
-      onlyInArchive: archiveInfo.entries.filter((ae) => !matchedArchive.has(ae)),
+      onlyInArchive: finalEntries.filter((ae) => !matchedArchive.has(ae)),
       onlyInDirectory: relDirFiles.filter((de) => !matchedDir.has(de))
     };
   } finally {
     await archiveInfo.cleanup?.();
+    for (const td of recursiveTempDirs) {
+      await fs.rm(td, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }
 
@@ -407,11 +543,17 @@ async function extractFullArchive(
     const sevenZipBin = (sevenBin as { path7za: string }).path7za;
 
     switch (format) {
+      case "zip": {
+        const zip = new AdmZip(archivePath);
+        zip.extractAllTo(tempDir, true);
+        break;
+      }
       case "tar": {
         await execFile("tar", ["xf", archivePath, "-C", tempDir]);
         break;
       }
-      case "7z": {
+      case "7z":
+      case "rar": {
         await execFile(sevenZipBin, ["x", "-y", `-o${tempDir}`, archivePath]);
         break;
       }

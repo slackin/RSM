@@ -569,7 +569,32 @@ server.post("/api/archive/delete-directory-files", async (req, reply) => {
     }
   }
 
-  return reply.send({ deleted, failed, results });
+  // Remove directories left empty after deletion (deepest first, never remove dirPath itself)
+  let removedDirs = 0;
+  const parentDirs = new Set<string>();
+  for (const r of results) {
+    if (r.success) {
+      let dir = path.dirname(path.join(dirPath, path.normalize(r.relativePath).replace(/^(\.\.[/\\])+/, "")));
+      while (dir.startsWith(dirPath + path.sep)) {
+        parentDirs.add(dir);
+        dir = path.dirname(dir);
+      }
+    }
+  }
+  const sortedDirs = [...parentDirs].sort((a, b) => b.length - a.length);
+  for (const dir of sortedDirs) {
+    try {
+      const entries = await fs.readdir(dir);
+      if (entries.length === 0) {
+        await fs.rmdir(dir);
+        removedDirs += 1;
+      }
+    } catch {
+      // ignore – directory may already be gone or inaccessible
+    }
+  }
+
+  return reply.send({ deleted, failed, removedDirs, results });
 });
 
 server.post("/api/archive/move-directory-files", async (req, reply) => {
@@ -617,7 +642,32 @@ server.post("/api/archive/move-directory-files", async (req, reply) => {
     }
   }
 
-  return reply.send({ moved, failed, destinationRoot: destRoot, results });
+  // Remove directories left empty after move (deepest first, never remove dirPath itself)
+  let removedDirs = 0;
+  const movedParentDirs = new Set<string>();
+  for (const r of results) {
+    if (r.success) {
+      let dir = path.dirname(path.join(dirPath, path.normalize(r.relativePath).replace(/^(\.\.[\/\\])+/, "")));
+      while (dir.startsWith(dirPath + path.sep)) {
+        movedParentDirs.add(dir);
+        dir = path.dirname(dir);
+      }
+    }
+  }
+  const sortedMoveDirs = [...movedParentDirs].sort((a, b) => b.length - a.length);
+  for (const dir of sortedMoveDirs) {
+    try {
+      const entries = await fs.readdir(dir);
+      if (entries.length === 0) {
+        await fs.rmdir(dir);
+        removedDirs += 1;
+      }
+    } catch {
+      // ignore – directory may already be gone or inaccessible
+    }
+  }
+
+  return reply.send({ moved, failed, removedDirs, destinationRoot: destRoot, results });
 });
 
 server.post("/api/archive/delete-entries", async (req, reply) => {
@@ -661,7 +711,8 @@ server.post("/api/archive/compare/cancel", async (_req, reply) => {
 server.post("/api/archive/compare", async (req, reply) => {
   const schema = z.object({
     archivePath: z.string().trim().min(1),
-    directoryPath: z.string().trim().min(1)
+    directoryPath: z.string().trim().min(1),
+    recursive: z.boolean().optional()
   });
   const body = schema.parse(req.body);
 
@@ -685,7 +736,7 @@ server.post("/api/archive/compare", async (req, reply) => {
     publishProgress({ phase: "archive_compare_started", archivePath, directoryPath });
     const result = await compareArchiveToDirectory(archivePath, directoryPath, (event) => {
       publishProgress({ phase: "archive_compare_progress", ...event });
-    }, abortController.signal);
+    }, abortController.signal, { recursive: body.recursive });
     publishProgress({ phase: "archive_compare_complete" });
     return reply.send(result);
   } catch (error) {

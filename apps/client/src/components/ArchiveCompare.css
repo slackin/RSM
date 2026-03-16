@@ -93,6 +93,19 @@
   background: #fff6cc;
 }
 
+.archiveCompareOptions {
+  margin-bottom: 0.5rem;
+}
+
+.archiveCompareCheckboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  color: #2a4864;
+  cursor: pointer;
+}
+
 .archiveCompareActions {
   display: flex;
   gap: 0.55rem;
